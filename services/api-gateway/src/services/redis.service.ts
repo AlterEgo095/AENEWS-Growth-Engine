@@ -21,8 +21,8 @@ export class RedisClient {
         logger.info('Redis client connected');
       });
 
-      RedisClient.instance.on('error', (err) => {
-        logger.error('Redis error:', err);
+      RedisClient.instance.on('error', (err: Error) => {
+        logger.error({ err }, 'Redis error');
       });
     }
     return RedisClient.instance;
@@ -42,14 +42,14 @@ export class RedisClient {
     const streamClient = RedisClient.getStreamClient();
     
     try {
-      const eventId = await streamClient.xadd(
+      const eventId: string = await streamClient.xadd(
         config.redisStreamName,
         'MAXLEN', '~', '100000', // Keep last 100k events
         '*', // Auto-generate ID
         'data', JSON.stringify(event),
         'timestamp', Date.now().toString(),
         'type', event.type || 'unknown',
-      );
+      ) as string;
 
       logger.debug({ eventId, type: event.type }, 'Event published to stream');
       return eventId;

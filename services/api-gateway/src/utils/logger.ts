@@ -1,7 +1,12 @@
 import pino from 'pino';
 import { config } from '../config';
 
-export const logger = pino({
+interface CustomLogger extends pino.Logger {
+  msgPrefix?: string;
+}
+
+export const logger: CustomLogger = pino({
+  msgPrefix: '[api-gateway] ',
   level: config.logLevel,
   transport: config.nodeEnv === 'development' ? {
     target: 'pino-pretty',

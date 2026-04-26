@@ -16,7 +16,7 @@ setupTelemetry();
 
 // Initialize Fastify
 const fastify = Fastify({
-  logger: logger,
+  logger: logger as any,
   requestIdLogLabel: 'traceId',
   disableRequestLogging: false,
   trustProxy: true,

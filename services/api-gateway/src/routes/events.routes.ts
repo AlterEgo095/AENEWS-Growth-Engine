@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest, RouteGenericInterface } from 'fastify';
 import { RedisClient } from '../services/redis.service';
 import { UserEventSchema, BatchEventsSchema, UserEvent } from '../schemas/event.schema';
 import { trace, context } from '@opentelemetry/api';
@@ -27,17 +27,17 @@ export default async function eventRoutes(fastify: FastifyInstance) {
       try {
         await request.jwtVerify();
       } catch (err) {
-        reply.code(401).send({ 
+        return reply.code(401).send({ 
           success: false, 
           error: { message: 'Unauthorized', code: 'UNAUTHORIZED' } 
         });
       }
     },
-  }, async (request: FastifyRequest<{ Body: UserEvent }>, reply: FastifyReply) => {
+  }, async (request, reply) => {
     const span = tracer.startSpan('track-event', {}, context.active());
     
     try {
-      const event = request.body;
+      const event = request.body as UserEvent;
       
       // Enrich event with request context
       const enrichedEvent = {
@@ -102,17 +102,17 @@ export default async function eventRoutes(fastify: FastifyInstance) {
       try {
         await request.jwtVerify();
       } catch (err) {
-        reply.code(401).send({ 
+        return reply.code(401).send({ 
           success: false, 
           error: { message: 'Unauthorized', code: 'UNAUTHORIZED' } 
         });
       }
     },
-  }, async (request: FastifyRequest<{ Body: { events: UserEvent[] } }>, reply: FastifyReply) => {
+  }, async (request, reply) => {
     const span = tracer.startSpan('track-batch-events', {}, context.active());
     
     try {
-      const { events } = request.body;
+      const { events } = request.body as { events: UserEvent[] };
       
       // Process events in parallel
       const eventIds = await Promise.all(
@@ -173,9 +173,9 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         },
       },
     },
-  }, async (request: FastifyRequest<{ Querystring: { id?: string; e?: string; c?: string } }>, reply: FastifyReply) => {
+  }, async (request, reply) => {
     try {
-      const { id, e, c } = request.query;
+      const { id, e, c } = request.query as { id?: string; e?: string; c?: string };
       
       if (id || e) {
         const event = {

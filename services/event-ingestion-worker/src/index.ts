@@ -297,7 +297,7 @@ async function processPendingMessages(): Promise<void> {
       10
     );
     
-    if (!pending || pending.length === 0) {
+    if (!pending || pending.length === 0 || !Array.isArray(pending)) {
       return;
     }
     
@@ -310,7 +310,7 @@ async function processPendingMessages(): Promise<void> {
       if (deliveryCount > config.processing.maxRetries) {
         logger.warn({ id, deliveryCount }, 'Message exceeded max retries, moving to DLQ');
         
-        const messages = await redisClient.xclaim(
+        const messages: any = await redisClient.xclaim(
           config.streams.userEvents,
           config.streams.consumerGroup,
           config.streams.consumerName,
@@ -318,11 +318,15 @@ async function processPendingMessages(): Promise<void> {
           id
         );
         
-        if (messages && messages.length > 0) {
+        if (messages && Array.isArray(messages) && messages.length > 0) {
           const [msgId, fields] = messages[0];
           
           // Move to dead letter queue
-          await redisClient.xadd('dlq.events', '*', ...fields);
+          const fieldsArray: string[] = [];
+          for (const [key, value] of Object.entries(fields)) {
+            fieldsArray.push(key, String(value));
+          }
+          await redisClient.xadd('dlq.events', '*', ...fieldsArray);
           
           // ACK original message
           await redisClient.xack(config.streams.userEvents, config.streams.consumerGroup, msgId);
@@ -332,8 +336,8 @@ async function processPendingMessages(): Promise<void> {
       }
       
       // Claim and retry
-      if (idleTime > config.processing.retryDelay) {
-        const messages = await redisClient.xclaim(
+      if (typeof idleTime === 'number' && idleTime > config.processing.retryDelay) {
+        const messages: any = await redisClient.xclaim(
           config.streams.userEvents,
           config.streams.consumerGroup,
           config.streams.consumerName,
@@ -341,7 +345,7 @@ async function processPendingMessages(): Promise<void> {
           id
         );
         
-        if (messages && messages.length > 0) {
+        if (messages && Array.isArray(messages) && messages.length > 0) {
           const [msgId, fields] = messages[0];
           await processEvent(msgId, fields);
         }
@@ -367,14 +371,14 @@ async function startConsumer(): Promise<void> {
   
   while (true) {
     try {
-      const results = await redisClient.xreadgroup(
+      const results: any = await redisClient.xreadgroup(
         'GROUP',
         config.streams.consumerGroup,
         config.streams.consumerName,
         'BLOCK',
-        config.processing.blockTime,
+        config.processing.blockTime.toString(),
         'COUNT',
-        config.processing.batchSize,
+        config.processing.batchSize.toString(),
         'STREAMS',
         config.streams.userEvents,
         '>'
