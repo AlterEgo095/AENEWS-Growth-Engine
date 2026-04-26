@@ -1,0 +1,257 @@
+version: '3.9'
+
+services:
+  # ============================================
+  # Infrastructure Services
+  # ============================================
+  
+  redis:
+    image: redis:7-alpine
+    container_name: aenews-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - aenews-network
+
+  mongodb:
+    image: mongo:7
+    container_name: aenews-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-MongoPass2024!}
+      MONGO_INITDB_DATABASE: aenews
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aenews-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: aenews-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-RootPass2024!}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-mautic}
+      MYSQL_USER: ${MYSQL_USER:-mautic}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-MauticDB2024!}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./infrastructure/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max_allowed_packet=256M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-RootPass2024!}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aenews-network
+
+  # ============================================
+  # Mautic Service
+  # ============================================
+  
+  mautic:
+    image: mautic/mautic:latest
+    container_name: aenews-mautic
+    ports:
+      - "8080:80"
+    environment:
+      MAUTIC_DB_HOST: mysql
+      MAUTIC_DB_NAME: ${MYSQL_DATABASE:-mautic}
+      MAUTIC_DB_USER: ${MYSQL_USER:-mautic}
+      MAUTIC_DB_PASSWORD: ${MYSQL_PASSWORD:-MauticDB2024!}
+      MAUTIC_RUN_CRON_JOBS: "true"
+      MAUTIC_TRUSTED_PROXIES: 0.0.0.0/0
+    volumes:
+      - mautic_data:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - aenews-network
+
+  # ============================================
+  # Application Services
+  # ============================================
+  
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: aenews-api-gateway
+    ports:
+      - "${API_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - API_PORT=3000
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318
+    volumes:
+      - ./services/api-gateway:/app
+      - /app/node_modules
+    depends_on:
+      - redis
+    command: npm run dev
+    networks:
+      - aenews-network
+
+  event-ingestion-worker:
+    build:
+      context: ./services/event-ingestion-worker
+      dockerfile: Dockerfile
+    container_name: aenews-event-worker
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - REDIS_URL=redis://redis:6379
+      - MONGODB_URI=${MONGODB_URI}
+    volumes:
+      - ./services/event-ingestion-worker:/app
+      - /app/node_modules
+    depends_on:
+      - redis
+      - mongodb
+    command: npm run dev
+    networks:
+      - aenews-network
+
+  mautic-integration-service:
+    build:
+      context: ./services/mautic-integration-service
+      dockerfile: Dockerfile
+    container_name: aenews-mautic-service
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - MAUTIC_BASE_URL=${MAUTIC_BASE_URL}
+      - MAUTIC_USERNAME=${MAUTIC_USERNAME}
+      - MAUTIC_PASSWORD=${MAUTIC_PASSWORD}
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./services/mautic-integration-service:/app
+      - /app/node_modules
+    depends_on:
+      - redis
+      - mautic
+    command: npm run dev
+    networks:
+      - aenews-network
+
+  ai-decision-engine:
+    build:
+      context: ./services/ai-decision-engine
+      dockerfile: Dockerfile
+    container_name: aenews-ai-engine
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MONGODB_URI=${MONGODB_URI}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./services/ai-decision-engine:/app
+    depends_on:
+      - redis
+      - mongodb
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - aenews-network
+
+  # ============================================
+  # Monitoring & Observability
+  # ============================================
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aenews-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - aenews-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aenews-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-GrafanaAdmin2024!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - aenews-network
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: aenews-tempo
+    ports:
+      - "4318:4318"  # OTLP HTTP
+      - "3200:3200"  # Tempo HTTP
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./infrastructure/monitoring/tempo/tempo.yaml:/etc/tempo.yaml
+      - tempo_data:/tmp/tempo
+    networks:
+      - aenews-network
+
+  loki:
+    image: grafana/loki:latest
+    container_name: aenews-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infrastructure/monitoring/loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    networks:
+      - aenews-network
+
+networks:
+  aenews-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  mongodb_data:
+  mongodb_config:
+  mysql_data:
+  mautic_data:
+  prometheus_data:
+  grafana_data:
+  tempo_data:
+  loki_data:

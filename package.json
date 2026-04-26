@@ -1,0 +1,28 @@
+{
+  "name": "aenews-growth-engine",
+  "version": "1.0.0",
+  "description": "Elite distributed architecture for marketing automation",
+  "scripts": {
+    "install:all": "npm run install:api-gateway && npm run install:event-worker && npm run install:mautic-service",
+    "install:api-gateway": "cd services/api-gateway && npm install",
+    "install:event-worker": "cd services/event-ingestion-worker && npm install",
+    "install:mautic-service": "cd services/mautic-integration-service && npm install",
+    "dev": "docker-compose up",
+    "dev:build": "docker-compose up --build",
+    "down": "docker-compose down",
+    "down:volumes": "docker-compose down -v",
+    "logs": "docker-compose logs -f",
+    "docker:build": "docker-compose build",
+    "docker:push": "echo 'Configure with your registry'",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces"
+  },
+  "workspaces": [
+    "services/api-gateway",
+    "services/event-ingestion-worker",
+    "services/mautic-integration-service"
+  ],
+  "keywords": ["marketing", "automation", "mautic", "event-driven", "microservices"],
+  "author": "AENEWS Team",
+  "license": "MIT"
+}

@@ -1,0 +1,81 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.test
+.env.production
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+.next/
+out/
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.pytest_cache/
+
+# Docker
+.dockerignore
+
+# Kubernetes
+secrets.yaml
+*-secrets.yaml
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Temp
+tmp/
+temp/
+*.tmp
+
+# Mautic
+mautic/app/cache/*
+mautic/app/logs/*
+mautic/app/spool/*
+mautic/media/files/*
+mautic/media/images/*
+mautic/translations/*
+
+# Monitoring
+prometheus_data/
+grafana_data/
+
+# Database dumps
+*.sql
+*.dump
